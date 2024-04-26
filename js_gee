@@ -1,0 +1,47 @@
+
+Map.centerObject(aoi, 12);
+Map.addLayer(aoi);
+var startDate = '2023-03-01';
+var endDate = '2023-03-30';
+var sentinel = ee.ImageCollection('COPERNICUS/S2')
+                  .filterBounds(aoi)
+                  .filterDate(startDate, endDate);
+
+function maskS2clouds(image) {
+  var qa = image.select('QA60');
+  var cloudBitMask = 1 << 10; 
+  var cirrusBitMask = 1 << 11; 
+
+  var mask = qa.bitwiseAnd(cloudBitMask).eq(0).and(qa.bitwiseAnd(cirrusBitMask).eq(0));
+  return image.updateMask(mask).divide(10000);
+}
+
+var cloudless = sentinel
+                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 15))
+                .map(maskS2clouds);
+
+print(cloudless);
+
+var composite = cloudless.mean();
+
+var clipped = composite.clip(aoi)
+
+Map.addLayer(
+    clipped,
+    {min: 0.0, max: 2000, bands: ['B4', 'B3', 'B2']},
+    'RGB');
+    
+var ndwi =
+    clipped.normalizedDifference(['B3', 'B8']).rename('NDWI');
+Map.addLayer(
+    ndwi,
+    {palette: ['red', 'yellow', 'green', 'cyan', 'blue']},
+    'NDWI');
+    
+    var ndwiThreshold = ndwi.gte(0.0);
+var ndwiMask = ndwiThreshold.updateMask(ndwiThreshold);
+Map.addLayer(
+    ndwiThreshold,
+    {palette:['black', 'white']},
+    'NDWI Binary Mask');
+Map.addLayer(ndwiMask, {palette:['blue']}, 'NDWI Mask');
