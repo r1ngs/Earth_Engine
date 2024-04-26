@@ -1,0 +1,38 @@
+
+Map.setCenter(-121.7617, 36.8984, 12);
+
+var aoi = geometry;
+var sentinel = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED');
+
+function maskS2clouds(image) {
+  var qa = image.select('QA60');
+  var cloudBitMask = 1 << 10; 
+  var cirrusBitMask = 1 << 11; 
+
+  var mask = qa.bitwiseAnd(cloudBitMask).eq(0).and(qa.bitwiseAnd(cirrusBitMask).eq(0));
+  return image.updateMask(mask).divide(10000);
+}
+
+var cloudless = sentinel
+                .filterBounds(aoi)
+                .filterDate('2020-01-01', '2023-05-01')
+                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 15))
+                .map(maskS2clouds);
+
+
+var addNDVI = function(image) {
+  var ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI');
+  return image.addBands(ndvi);
+};
+
+var withNDVI = cloudless.map(addNDVI);
+
+var firstImage = ee.Image(withNDVI.first());
+
+
+Map.addLayer(firstImage.select('NDVI'), {
+  min: -1,
+  max: 1,
+  palette: ['blue', 'white', 'green']
+}, 'NDVI');
+
